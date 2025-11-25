@@ -1,0 +1,285 @@
+{
+  "cookies": [
+    {
+      "name": "_ga",
+      "value": "GA1.1.220271806.1761553592",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1798467694,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_J0N9RPSLL3",
+      "value": "GS2.1.s1763907694$o7$g0$t1763907694$j60$l0$h0",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1798467694,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ym_d",
+      "value": "1761553593",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793089593,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ym_isad",
+      "value": "1",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1763917368,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ym_uid",
+      "value": "1761553593570009838",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793089593,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ym_visorc",
+      "value": "w",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1763909495,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ym_yrcid_4882266594",
+      "value": "3389b475b7db478b7beb15d43066d51b2c7fc1feafc482cdf48a0409682613ae6cb23a0c5a0dbd7fb336fdc1700dff0711479c3806174b2ffd70cb118c105d0cab4ce5d6435a9e9ddfc424b450a8a9415ae9a5544dc623219eadff8ec349ddb792477a5e328240b768f24ad3e8795ab6",
+      "domain": "rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ab_id",
+      "value": "d4e95437bf57f948607149ebadc062d2504745b3",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1798467694,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "account-to-yandex-id",
+      "value": "1761553593570009838",
+      "domain": "rostender.info",
+      "path": "/",
+      "expires": 1779546094,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "assets-version",
+      "value": "8a619448098e0b43dfe84922c78d3e47",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1763907993,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "clientid",
+      "value": "ad347dd952f3cd28744f4b54786802e5",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1795011696,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "export_popup",
+      "value": "1",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793788085,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "fp",
+      "value": "535af74063a25c3a2c3617273832fb1f",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1795443694,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "is_autorized",
+      "value": "2bb9f259a06267e9a4c1671df8cd1fe0",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793089616,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "message_digest",
+      "value": "f8abbb7168ea468d33f5155a959b0b76",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793089616,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "nps_popup",
+      "value": "1",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1763973145,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "offset",
+      "value": "10800",
+      "domain": "rostender.info",
+      "path": "/",
+      "expires": 1795443693,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pass_rmb",
+      "value": "75cd6f126475010f768930b82801819c",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1795011696,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "PHPSESSID",
+      "value": "a8047c8e8a386bb549320f6a48d44a2b",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pr2",
+      "value": "A",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1793089591,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "proffy_legend",
+      "value": "1",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1764752243,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sort-advanced",
+      "value": "%7B%22sort_field%22%3A%22dtc%22%2C%22sort_direction%22%3A%223%22%2C%22sort_alias%22%3A%22new-first%22%7D",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1766480145,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "sort-simple",
+      "value": "%7B%22sort_field%22%3A%22dtc%22%2C%22sort_direction%22%3A%223%22%2C%22sort_alias%22%3A%22new-first%22%7D",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 1766437394,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateOpenCustomers",
+      "value": "false",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateOpenParticipants",
+      "value": "false",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateOpenTag",
+      "value": "false",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateOpenTeam",
+      "value": "false",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "stateOpenTemplate",
+      "value": "true",
+      "domain": ".rostender.info",
+      "path": "/",
+      "expires": 0,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

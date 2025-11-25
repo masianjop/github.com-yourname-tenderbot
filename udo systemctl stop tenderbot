@@ -1,0 +1,16 @@
+[0;1;32m●[0m tenderbot.service - Tender Bot (Telegram)
+     Loaded: loaded (/etc/systemd/system/tenderbot.service; enabled; vendor preset: enabled)
+     Active: [0;1;32mactive (running)[0m since Mon 2025-11-24 17:16:31 UTC; 17s ago
+   Main PID: 68031 (python)
+      Tasks: 2 (limit: 4532)
+     Memory: 46.6M
+        CPU: 1.197s
+     CGroup: /system.slice/tenderbot.service
+             └─68031 /opt/tender_bot/.venv/bin/python /opt/tender_bot/tg_bot.py
+
+Nov 24 17:16:31 Tender systemd[1]: Started Tender Bot (Telegram).
+Nov 24 17:16:32 Tender python[68031]: 2025-11-24 17:16:32,331 - __main__ - INFO - Бот запущен.
+Nov 24 17:16:32 Tender python[68031]: 2025-11-24 17:16:32,481 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8116890913:AAFeWzjePsAIlUWLfDlgitUCsf1pDGprY_4/getMe "HTTP/1.1 200 OK"
+Nov 24 17:16:32 Tender python[68031]: 2025-11-24 17:16:32,526 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8116890913:AAFeWzjePsAIlUWLfDlgitUCsf1pDGprY_4/deleteWebhook "HTTP/1.1 200 OK"
+Nov 24 17:16:32 Tender python[68031]: 2025-11-24 17:16:32,527 - telegram.ext.Application - INFO - Application started
+Nov 24 17:16:42 Tender python[68031]: 2025-11-24 17:16:42,684 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8116890913:AAFeWzjePsAIlUWLfDlgitUCsf1pDGprY_4/getUpdates "HTTP/1.1 200 OK"
