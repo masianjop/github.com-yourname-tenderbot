@@ -24,8 +24,12 @@ from rostender_filter_parser import fetch_rostender_tenders_filtered
 from mce_filter import analyze_tender
 from gpt_client import ask_gpt_about_tenders
 from config_store import (
-    get_rostender_filter_url,
-    set_rostender_filter_url,
+    get_keywords,
+    set_keywords,
+    get_exclude_keywords,
+    set_exclude_keywords,
+    get_city,
+    set_city,
     get_gpt_filter_text,
     set_gpt_filter_text,
 )
@@ -49,13 +53,12 @@ ROST_MAX_PAGES = 2
 MAX_GPT_TENDERS = 12  # максимум тендеров, которые отправляем в GPT за один запуск
 
 
-# ================== ХЕЛПЕРЫ ДЛЯ МЕНЮ ==================
-
+# ================== МЕНЮ ==================
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
-            InlineKeyboardButton("Ростендер: МЦЭ фильтр", callback_data="rost_mce"),
+            InlineKeyboardButton("🔍 Найти тендеры (Ростендер)", callback_data="rost_mce"),
         ],
         [
             InlineKeyboardButton("⚙ Настройки фильтров", callback_data="settings"),
@@ -64,20 +67,23 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-# ================== ХЭНДЛЕРЫ КОМАНД ==================
-
+# ================== КОМАНДЫ ==================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "Привет! Я бот для проверки тендеров.\n\n"
-        "Сейчас подключен источник: <b>Ростендер (расширенный поиск)</b>.\n"
-        "Нажми кнопку ниже, чтобы найти тендеры по профилю МЦЭ Инжиниринг.\n\n"
+        "Поддерживаемые функции:\n"
+        "• Поиск тендеров Ростендера\n"
+        "• Локальный фильтр МЦЭ\n"
+        "• Фильтр GPT\n\n"
+        "Настройки можно менять прямо через Telegram.\n\n"
         "Команды:\n"
-        "/start — показать меню\n"
-        "/rost_mce — запустить поиск по Ростендеру\n"
-        "/show_filters — показать текущие фильтры\n"
-        "/set_rost_url — сменить URL фильтра Ростендера\n"
-        "/set_gpt_filter — сменить текст фильтра для ИИ\n"
+        "/filters — показать текущие фильтры\n"
+        "/set_keywords — ключевые слова\n"
+        "/set_exclude — слова-исключения\n"
+        "/set_city — город\n"
+        "/set_gpt_filter — фильтр GPT\n"
+        "/rost_mce — запустить поиск\n"
     )
     await update.message.reply_text(
         text,
@@ -88,8 +94,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def rost_mce(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
     """
-    Главная функция: забираем тендеры с Ростендера, фильтруем локально,
-    затем отправляем часть в GPT и показываем только те, что GPT признал подходящими.
+    1) Тянем тендеры с Ростендера.
+    2) Прогоняем через локальный фильтр MCE.
+    3) Если MCE никого не нашёл — отдаём в GPT первые MAX_GPT_TENDERS тендеров.
+    4) GPT решает, что подходит.
     """
     chat_id = update.effective_chat.id
 
@@ -104,17 +112,24 @@ async def rost_mce(update: Update, context: ContextTypes.DEFAULT_TYPE, from_call
 
     # --- грузим тендеры в отдельном потоке ---
     def load_tenders():
-        return fetch_rostender_tenders_filtered(days=3, max_pages=ROST_MAX_PAGES)
+        return fetch_rostender_tenders_filtered(
+            days=3,
+            max_pages=ROST_MAX_PAGES,
+            include_words=get_keywords(),
+            exclude_words=get_exclude_keywords(),
+            city_filter=get_city(),
+        )
 
     tenders = await to_thread(load_tenders)
 
     if not tenders:
-        await msg.edit_text("⚠ За последние 3 дня новых тендеров на Ростендере не нашёл.")
+        await msg.edit_text("⚠ За последние 3 дня новых тендеров не найдено.")
         return
 
-    # ---------------- ЛОКАЛЬНЫЙ ФИЛЬТР ----------------
-    # тут не импортируем LocalAnalysis, просто используем то, что вернёт analyze_tender
-    local_items: list[tuple[object, object]] = []
+    log.info("Всего тендеров из Ростендера после базового фильтра: %d", len(tenders))
+
+    # ---------------- ЛОКАЛЬНЫЙ ФИЛЬТР МЦЭ ----------------
+    local_items: list[tuple[object, object | None]] = []
 
     for t in tenders:
         desc = getattr(t, "detail_text", "") or getattr(t, "raw_block", "") or ""
@@ -128,39 +143,37 @@ async def rost_mce(update: Update, context: ContextTypes.DEFAULT_TYPE, from_call
             description=desc,
         )
 
-        # ожидаем, что analyze_tender вернёт объект с полем is_local_match (или is_match)
-        is_local_match = getattr(local, "is_local_match", None)
-        if is_local_match is None:
-            # fallback: поддержка старой версии, где было is_match
-            is_local_match = getattr(local, "is_match", False)
+        is_local_match = getattr(local, "is_local_match", getattr(local, "is_match", False))
 
         if is_local_match:
             local_items.append((t, local))
 
+    log.info("Локальный фильтр МЦЭ: нашёл %d тендеров", len(local_items))
+
     # сортируем по приоритету и дате
-    def sort_key(pair: tuple[object, object]):
-        tender, local = pair
-        priority = getattr(local, "priority_level", 0) or 0
-        published = getattr(tender, "published", None)
-        number = getattr(tender, "number", "")
-        return (priority, published, number)
-
-    local_items.sort(key=sort_key, reverse=True)
-
-    # ограничение на количество для GPT
-    local_items = local_items[:MAX_GPT_TENDERS]
-
-    if not local_items:
-        await msg.edit_text(
-            "⚠ Локальный фильтр не нашёл тендеров, похожих на профиль МЦЭ Инжиниринг.\n"
-            "Если хочешь ослабить фильтр — отредактируй mce_filter.py или фильтр ИИ."
+    if local_items:
+        local_items.sort(
+            key=lambda pair: (getattr(pair[1], "priority_level", 0), pair[0].published, pair[0].number),
+            reverse=True,
         )
-        return
-
-    await msg.edit_text(
-        f"🤖 Локальный фильтр нашёл {len(local_items)} кандидатов. "
-        f"Отправляю их в ИИ на детальный анализ..."
-    )
+        local_items = local_items[:MAX_GPT_TENDERS]
+        await msg.edit_text(
+            f"🤖 Локальный фильтр МЦЭ нашёл {len(local_items)} кандидатов. Отправляю их в ИИ..."
+        )
+    else:
+        # Fallback: если фильтр МЦЭ никого не нашёл — всё равно что-то отправим в GPT,
+        # чтобы не сидеть с пустым результатом.
+        fallback_count = min(MAX_GPT_TENDERS, len(tenders))
+        local_items = [(t, None) for t in tenders[:fallback_count]]
+        log.info(
+            "Локальный фильтр МЦЭ не нашёл подходящих тендеров. "
+            "Отправляю в GPT первые %d тендеров без локального отбора.",
+            fallback_count,
+        )
+        await msg.edit_text(
+            "⚠ Локальный фильтр МЦЭ не нашёл подходящих тендеров.\n"
+            f"Отправляю в ИИ первые {fallback_count} тендеров для проверки."
+        )
 
     # --- GPT в отдельном потоке ---
     def gpt_job():
@@ -188,7 +201,7 @@ async def rost_mce(update: Update, context: ContextTypes.DEFAULT_TYPE, from_call
     for t in good_tenders:
         reason = good_reasons.get(t.number, "")
         text_parts = [
-            f"🟢 <b>ПОДХОДИТ (по мнению ИИ)</b> — {t.title}",
+            f"🟢 <b>ПОДХОДИТ (по мнению ИИ)</b>\n{t.title}",
             f"№ {t.number}",
             "",
             "<b>Комментарий ИИ:</b>",
@@ -208,29 +221,48 @@ async def cmd_rost_mce(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await rost_mce(update, context, from_callback=False)
 
 
-# ================== НАСТРОЙКИ ФИЛЬТРОВ ЧЕРЕЗ ТГ ==================
+# ================== НАСТРОЙКИ ФИЛЬТРОВ ==================
 
+async def filters_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kw = ", ".join(get_keywords()) or "—"
+    ex = ", ".join(get_exclude_keywords()) or "—"
+    ct = get_city() or "—"
 
-async def show_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    rost_url = get_rostender_filter_url() or "не задан"
-    gpt_text = get_gpt_filter_text()
-    short_gpt = gpt_text.strip()
-    if len(short_gpt) > 400:
-        short_gpt = short_gpt[:400] + "…"
+    gpt = get_gpt_filter_text()
+    short_gpt = gpt[:300] + "…" if len(gpt) > 300 else gpt
 
     text = (
         "<b>Текущие фильтры:</b>\n\n"
-        f"<b>Ростендер URL:</b>\n{rost_url}\n\n"
-        f"<b>Фильтр ИИ (начало текста):</b>\n{short_gpt}"
+        f"<b>Ключевые слова:</b> {kw}\n"
+        f"<b>Исключения:</b> {ex}\n"
+        f"<b>Город:</b> {ct}\n\n"
+        "<b>Фильтр GPT:</b>\n"
+        f"{short_gpt}"
     )
+
     await update.message.reply_text(text, parse_mode="HTML")
 
 
-async def set_rost_url_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["awaiting"] = "rost_url"
+async def set_keywords_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["awaiting"] = "keywords"
     await update.message.reply_text(
-        "Пришли мне <b>новый URL</b> расширенного поиска Ростендера "
-        "(строка из браузера после настройки фильтра).",
+        "Введите <b>ключевые слова</b> через запятую.",
+        parse_mode="HTML",
+    )
+
+
+async def set_exclude_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["awaiting"] = "exclude"
+    await update.message.reply_text(
+        "Введите <b>слова-исключения</b> через запятую.",
+        parse_mode="HTML",
+    )
+
+
+async def set_city_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["awaiting"] = "city"
+    await update.message.reply_text(
+        "Введите <b>город</b>, по которому фильтровать (или оставьте пустым, чтобы отключить).",
         parse_mode="HTML",
     )
 
@@ -238,104 +270,92 @@ async def set_rost_url_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_gpt_filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["awaiting"] = "gpt_filter"
     await update.message.reply_text(
-        "Пришли <b>новый текст фильтра для ИИ</b>.\n\n"
-        "Это текст, где описано, чем занимается МЦЭ Инжиниринг и какие тендеры считаем подходящими. "
-        "По нему GPT решает, наш это тендер или нет.",
+        "Введите <b>новый текст фильтра GPT</b>.",
         parse_mode="HTML",
     )
 
 
-async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    mode = context.user_data.get("awaiting")
-    text = (update.message.text or "").strip()
+# ================== ОБРАБОТКА ТЕКСТА ==================
 
-    if mode == "rost_url":
-        set_rostender_filter_url(text)
+async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mode = context.user_data.get("awaiting", "")
+    txt = (update.message.text or "").strip()
+
+    if mode == "keywords":
+        items = [w.strip() for w in txt.split(",") if w.strip()]
+        set_keywords(items)
         context.user_data["awaiting"] = None
-        await update.message.reply_text(
-            "✅ Новый URL фильтра Ростендера сохранён.\n"
-            "Следующий запуск /rost_mce будет использовать этот URL."
-        )
+        await update.message.reply_text("✅ Ключевые слова обновлены.")
+        return
+
+    if mode == "exclude":
+        items = [w.strip() for w in txt.split(",") if w.strip()]
+        set_exclude_keywords(items)
+        context.user_data["awaiting"] = None
+        await update.message.reply_text("✅ Исключения обновлены.")
+        return
+
+    if mode == "city":
+        set_city(txt)
+        context.user_data["awaiting"] = None
+        await update.message.reply_text("✅ Город обновлён.")
         return
 
     if mode == "gpt_filter":
-        set_gpt_filter_text(text)
+        set_gpt_filter_text(txt)
         context.user_data["awaiting"] = None
-        await update.message.reply_text(
-            "✅ Новый текст фильтра ИИ сохранён.\n"
-            "Все следующие обращения к ИИ будут использовать этот текст."
-        )
+        await update.message.reply_text("✅ Фильтр GPT обновлён.")
         return
 
-    # если текст вне режимов — даём подсказку
     await update.message.reply_text(
-        "Я не понял этот текст. Для настроек фильтров используй команды:\n"
-        "/show_filters — показать текущие фильтры\n"
-        "/set_rost_url — сменить URL фильтра Ростендера\n"
-        "/set_gpt_filter — сменить фильтр ИИ"
+        "Не понимаю сообщение. Используйте команды:\n"
+        "/filters\n/set_keywords\n/set_exclude\n/set_city\n/set_gpt_filter\n/rost_mce"
     )
 
 
-# ================== CALLBACK'И ==================
-
+# ================== CALLBACK ==================
 
 async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
+    data = update.callback_query.data
 
     if data == "rost_mce":
         await rost_mce(update, context, from_callback=True)
         return
 
     if data == "settings":
-        # просто покажем текущие фильтры
-        rost_url = get_rostender_filter_url() or "не задан"
-        gpt_text = get_gpt_filter_text()
-        short_gpt = gpt_text.strip()
-        if len(short_gpt) > 400:
-            short_gpt = short_gpt[:400] + "…"
-
-        text = (
-            "<b>Настройки фильтров</b>\n\n"
-            f"<b>Ростендер URL:</b>\n{rost_url}\n\n"
-            f"<b>Фильтр ИИ (начало текста):</b>\n{short_gpt}\n\n"
-            "Для изменения используй команды:\n"
-            "/set_rost_url — сменить URL фильтра Ростендера\n"
-            "/set_gpt_filter — сменить текст фильтра ИИ"
+        await update.callback_query.message.edit_text(
+            "⚙ <b>Настройки фильтров</b>\n"
+            "Используйте команды:\n\n"
+            "/filters\n"
+            "/set_keywords\n"
+            "/set_exclude\n"
+            "/set_city\n"
+            "/set_gpt_filter\n"
+            "/rost_mce",
+            parse_mode="HTML",
+            reply_markup=main_menu_keyboard(),
         )
-
-        await query.edit_message_text(text=text, parse_mode="HTML", reply_markup=main_menu_keyboard())
         return
-
-    # по умолчанию просто игнор
-    await query.answer()
 
 
 # ================== MAIN ==================
 
-
 def main():
-    app = (
-        ApplicationBuilder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .build()
-    )
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("rost_mce", cmd_rost_mce))
 
-    # настройки
-    app.add_handler(CommandHandler("show_filters", show_filters))
-    app.add_handler(CommandHandler("set_rost_url", set_rost_url_cmd))
+    app.add_handler(CommandHandler("filters", filters_cmd))
+    app.add_handler(CommandHandler("set_keywords", set_keywords_cmd))
+    app.add_handler(CommandHandler("set_exclude", set_exclude_cmd))
+    app.add_handler(CommandHandler("set_city", set_city_cmd))
     app.add_handler(CommandHandler("set_gpt_filter", set_gpt_filter_cmd))
 
-    # callback-кнопки
     app.add_handler(CallbackQueryHandler(callbacks))
-
-    # любые текстовые сообщения (не команды) — в роутер
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
 
-    log.info("Бот запущен. Нажми /start в Telegram.")
+    log.info("Бот запущен.")
     app.run_polling()
 
 

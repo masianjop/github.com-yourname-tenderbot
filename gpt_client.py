@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from typing import Any, List, Tuple
 
 import httpx
+from dotenv import load_dotenv   # <<< добавили
 
 from config_store import get_gpt_filter_text
+
+load_dotenv()   # <<< добавили
 
 log = logging.getLogger(__name__)
 

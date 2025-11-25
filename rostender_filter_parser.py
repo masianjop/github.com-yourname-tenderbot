@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
-from rostender_parser import Tender  # твой dataclass Tender
+from rostender_parser import Tender
 
 log = logging.getLogger(__name__)
 
-# ФИКСИРОВАННЫЙ URL расширенного поиска Ростендера.
-# Здесь уже можно один раз руками настроить "Приём заявок" и нужные базовые фильтры.
-ROSTENDER_FILTER_URL = (
-    "https://rostender.info/extsearch/advanced?query=a1dc870aa14ff1586ae725d56f7b2ee6"
-)
+# Загружаем .env, чтобы подхватить ROSTENDER_FILTER_URL
+load_dotenv()
+
+# Если в .env есть готовый URL расширенного поиска (с query),
+# используем его. Иначе — базовый advanced без фильтров.
+ROSTENDER_FILTER_URL = os.getenv("ROSTENDER_FILTER_URL", "").strip() or \
+    "https://rostender.info/extsearch/advanced"
 
 HEADERS = {
     "User-Agent": (
@@ -34,20 +38,20 @@ def _get_search_html(
 ) -> str:
     """
     Загружает страницу расширенного поиска Ростендера по готовому URL.
-    page=1 — без параметра page,
-    page>1 — добавляем ?page=N или &page=N.
+    page=1 — base_url как есть.
+    page>1 — аккуратно добавляем/обновляем параметр page=N.
     """
     sess = session or requests.Session()
 
     if page <= 1:
         url = base_url
     else:
-        # убираем старый page, если он вдруг уже есть
+        # убираем старый page, если есть
         url = re.sub(r"[?&]page=\d+", "", base_url)
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}page={page}"
 
-    log.info("Запрашиваю страницу поиска Ростендера: %s", url)
+    log.info("Запрашиваю страницу Ростендера: %s", url)
     resp = sess.get(url, headers=HEADERS, timeout=30)
     resp.raise_for_status()
     return resp.text
@@ -55,7 +59,7 @@ def _get_search_html(
 
 def _iter_blocks(full_text: str):
     """
-    Разбиваем сплошной текст страницы на блоки по 'Тендер №... от ...'.
+    Разбиваем текст страницы на блоки по 'Тендер №... от ...'.
     """
     pattern = re.compile(
         r"Тендер\s+№(?P<number>\d+)\s+от\s+"
@@ -75,10 +79,9 @@ def _parse_price(lines: list[str]) -> tuple[Optional[int], Optional[str]]:
     for i, line in enumerate(lines):
         if line == "Начальная цена" and i + 1 < len(lines):
             raw = lines[i + 1]
-            if "₽" in raw:
-                digits = re.sub(r"[^\d]", "", raw)
-                if digits:
-                    return int(digits), raw
+            digits = re.sub(r"[^\d]", "", raw)
+            if digits:
+                return int(digits), raw
             return None, raw
     return None, None
 
@@ -114,13 +117,55 @@ def _parse_city_region(lines: list[str]) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+def _matches_basic_filters(
+    title: str,
+    body: str,
+    city: Optional[str],
+    region: Optional[str],
+    include_words: list[str],
+    exclude_words: list[str],
+    city_filter: Optional[str],
+) -> bool:
+    """
+    Локальная фильтрация:
+    - include_words (если заданы) — хотя бы одно вхождение;
+    - exclude_words — ни одного вхождения;
+    - city_filter (если задан) должен встречаться в городе/регионе/тексте.
+
+    ВАЖНО: Этап 'приём заявок' здесь больше НЕ проверяем — считаем,
+    что он уже настроен в самом URL расширенного поиска Ростендера.
+    """
+    text = f"{title}\n{body}".lower()
+
+    # Положительные слова (если заданы) — хотя бы одно
+    if include_words and not any(w in text for w in include_words):
+        return False
+
+    # Исключения — ни одно не должно встречаться
+    if exclude_words and any(w in text for w in exclude_words):
+        return False
+
+    # Фильтр по городу
+    if city_filter:
+        geo_text = " ".join(
+            [
+                (city or "").lower(),
+                (region or "").lower(),
+                text,
+            ]
+        )
+        if city_filter not in geo_text:
+            return False
+
+    return True
+
+
 def _fill_details(
     tenders: List[Tender],
     session: Optional[requests.Session] = None,
 ) -> None:
     """
-    Для каждого тендера заходим по ссылке t.url и вытаскиваем более детальный текст.
-    detail_text добавляем как динамическое поле в объект.
+    Для каждого тендера заходим по ссылке и выдёргиваем detail_text.
     """
     sess = session or requests.Session()
     for t in tenders:
@@ -137,53 +182,6 @@ def _fill_details(
             log.warning("Не удалось загрузить детали тендера %s: %s", t.number, e)
 
 
-def _matches_basic_filters(
-    title: str,
-    body: str,
-    city: Optional[str],
-    region: Optional[str],
-    include_words: list[str],
-    exclude_words: list[str],
-    city_filter: Optional[str],
-) -> bool:
-    """
-    Локальная фильтрация:
-    - этап должен быть «Приём заявок»;
-    - должны присутствовать include_words (если заданы);
-    - не должны присутствовать exclude_words;
-    - если задан город — он должен встретиться в городе/регионе/описании.
-    """
-    text = f"{title}\n{body}".lower()
-
-    # Этап "Приём заявок" — обязательно
-    if "приём заявок" not in text and "прием заявок" not in text:
-        return False
-
-    # Положительные слова (если заданы) — хотя бы одно
-    if include_words:
-        if not any(w in text for w in include_words):
-            return False
-
-    # Исключения — ни одно не должно встретиться
-    if exclude_words:
-        if any(w in text for w in exclude_words):
-            return False
-
-    # Фильтр по городу (если задан)
-    if city_filter:
-        geo_text = " ".join(
-            [
-                (city or "").lower(),
-                (region or "").lower(),
-                text,
-            ]
-        )
-        if city_filter not in geo_text:
-            return False
-
-    return True
-
-
 def fetch_rostender_tenders_filtered(
     days: int = 3,
     max_pages: int = 2,
@@ -193,23 +191,16 @@ def fetch_rostender_tenders_filtered(
     city_filter: Optional[str] = None,
 ) -> List[Tender]:
     """
-    Парсит тендеры по заранее настроенному расширенному поиску Ростендера
-    и дополнительно фильтрует их локально по:
-      - ключевым словам (include_words),
-      - словам-исключениям (exclude_words),
-      - городу (city_filter),
-      - этапу «Приём заявок».
-
-    include_words / exclude_words — списки строк (уже разделённые по запятой и очищенные).
-    city_filter — строка города (или None, если город не фильтруем).
+    Парсит тендеры по сохранённому расширенному поиску Ростендера
+    (ROSTENDER_FILTER_URL из .env) и дополнительно фильтрует:
+      - include_words / exclude_words,
+      - city_filter,
+      - дата публикации за последние `days` дней.
     """
 
-    # Нормализуем фильтры
     include_words = [w.strip().lower() for w in (include_words or []) if w.strip()]
     exclude_words = [w.strip().lower() for w in (exclude_words or []) if w.strip()]
-    city_filter_norm = (
-        city_filter.strip().lower() if city_filter and city_filter.strip() else None
-    )
+    city_filter_norm = city_filter.strip().lower() if city_filter else None
 
     base_url = ROSTENDER_FILTER_URL
 
@@ -224,10 +215,11 @@ def fetch_rostender_tenders_filtered(
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text("\n", strip=True)
 
-        page_added_any = False
+        raw_blocks = 0
         added_this_page = 0
 
         for number, date_str, body in _iter_blocks(text):
+            raw_blocks += 1
             try:
                 d = datetime.strptime(date_str, "%d.%m.%y").date()
             except ValueError:
@@ -246,7 +238,6 @@ def fetch_rostender_tenders_filtered(
 
             lines = _cleanup_lines(body)
             if not lines:
-                log.debug("Пустой блок у тендера %s", number)
                 continue
 
             title = lines[0]
@@ -254,7 +245,6 @@ def fetch_rostender_tenders_filtered(
             city, region = _parse_city_region(lines)
             price, price_raw = _parse_price(lines)
 
-            # Локальная фильтрация по словам/городу/этапу
             if not _matches_basic_filters(
                 title=title,
                 body=body,
@@ -282,33 +272,32 @@ def fetch_rostender_tenders_filtered(
                 raw_block=body.strip(),
             )
             tenders_by_number[number] = tender
-            page_added_any = True
             added_this_page += 1
 
         log.info(
-            "Фильтрованный поиск, страница %s: добавлено %d тендера(ов), всего уникальных: %d",
+            "Страница %s: сырых блоков: %d, прошло фильтр: %d, всего уникальных: %d",
             page,
+            raw_blocks,
             added_this_page,
             len(tenders_by_number),
         )
 
-        if not page_added_any:
+        if raw_blocks == 0 or added_this_page == 0:
             log.info(
-                "На странице %s фильтрованного поиска нет тендеров новее %s, останавливаюсь.",
+                "На странице %s новых подходящих тендеров не нашли, останавливаемся.",
                 page,
-                min_date.strftime("%d.%m.%Y"),
             )
             break
 
     results = list(tenders_by_number.values())
 
     if with_details and results:
-        log.info("Загружаю детали для %d тендеров (фильтрованный поиск)...", len(results))
+        log.info("Загружаю детали для %d тендеров…", len(results))
         _fill_details(results, session=sess)
 
     results.sort(key=lambda t: (t.published, t.number), reverse=True)
     log.info(
-        "Итого по фильтрованному поиску: нашёл %d тендеров за последние %d дн.",
+        "Итого по фильтрованному поиску: %d тендеров за последние %d дн.",
         len(results),
         days,
     )
